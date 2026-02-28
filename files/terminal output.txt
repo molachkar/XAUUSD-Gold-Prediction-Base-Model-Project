@@ -1,0 +1,63 @@
+Loading data...
+Total rows: 4861
+Total features: 15
+
+Starting Walk-Forward CV
+
+Fold 1
+Train rows: 810 | Test rows: 810
+Training until validation scores don't improve for 300 rounds
+Early stopping, best iteration is:
+[2557]  valid_0's l2: 6.38673e-05
+IC: 0.0577 | RMSE: 0.007992 | Iter: 2557 | Time: 0.32s
+--------------------------------------------------
+Fold 2
+Train rows: 1620 | Test rows: 810
+Training until validation scores don't improve for 300 rounds
+Early stopping, best iteration is:
+[31]    valid_0's l2: 4.35925e-05
+IC: 0.0905 | RMSE: 0.006602 | Iter: 31 | Time: 0.11s
+--------------------------------------------------
+Fold 3
+Train rows: 2430 | Test rows: 810
+Training until validation scores don't improve for 300 rounds
+Early stopping, best iteration is:
+[1031]  valid_0's l2: 6.12457e-05
+IC: 0.052 | RMSE: 0.007826 | Iter: 1031 | Time: 0.25s
+--------------------------------------------------
+Fold 4
+Train rows: 3240 | Test rows: 810
+Training until validation scores don't improve for 300 rounds
+Early stopping, best iteration is:
+[859]   valid_0's l2: 6.95677e-05
+IC: 0.0506 | RMSE: 0.008341 | Iter: 859 | Time: 0.27s
+--------------------------------------------------
+Fold 5
+Train rows: 4050 | Test rows: 810
+Training until validation scores don't improve for 300 rounds
+Early stopping, best iteration is:
+[38]    valid_0's l2: 5.68274e-05
+IC: 0.0915 | RMSE: 0.007538 | Iter: 38 | Time: 0.17s
+--------------------------------------------------
+
+========================
+CV SUMMARY
+========================
+IC per fold: [0.0577, 0.0905, 0.052, 0.0506, 0.0915]
+Mean IC: 0.0684
+Std IC : 0.0185
+
+Top Stable Features:
+Macro_Fast           0.006094
+Market_State         0.005797
+MACD_Signal          0.003256
+Close_XAUUSD         0.002888
+Close_Returns        0.002520
+BB_Middle            0.002222
+Close_EURUSD         0.002100
+Close_USDJPY         0.001617
+Return_Percentile    0.001580
+LogReturn_ZScore     0.001437
+dtype: float64
+
+Done

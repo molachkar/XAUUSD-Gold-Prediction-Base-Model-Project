@@ -1,0 +1,84 @@
+{
+  "model_type": "LGBMRegressor",
+  "target": "y_next_log_return",
+  "n_folds": 5,
+  "total_rows": 4861,
+  "n_features": 15,
+  "features": [
+    "BB_Middle",
+    "Close_EURUSD",
+    "Close_Returns",
+    "Close_USDJPY",
+    "Close_XAUUSD",
+    "Distance_From_AllTimeHigh",
+    "LogReturn_ZScore",
+    "Log_Returns",
+    "MACD_Signal",
+    "Macro_Fast",
+    "Market_State",
+    "Pct_From_AllTimeHigh",
+    "Return_Percentile",
+    "Return_ZScore",
+    "Volume_Percentile"
+  ],
+  "date_range": {
+    "start": "2011-09-11",
+    "end": "2024-12-31"
+  },
+  "cv_results": {
+    "ic_per_fold": [
+      0.0577,
+      0.0905,
+      0.052,
+      0.0506,
+      0.0915
+    ],
+    "mean_ic": 0.0684,
+    "std_ic": 0.0185,
+    "best_fold": 5,
+    "best_fold_ic": 0.0915
+  },
+  "hyperparameters": {
+    "n_estimators": 30000,
+    "learning_rate": 0.03,
+    "num_leaves": 64,
+    "min_data_in_leaf": 80,
+    "feature_fraction": 0.9,
+    "bagging_fraction": 0.9,
+    "bagging_freq": 1,
+    "reg_alpha": 0.5,
+    "reg_lambda": 0.5,
+    "early_stopping": 300
+  },
+  "top_5_features": [
+    "Macro_Fast",
+    "Market_State",
+    "MACD_Signal",
+    "Close_XAUUSD",
+    "Close_Returns"
+  ],
+  "edge_summary": {
+    "tradeable_regimes": [
+      "bull_neutral",
+      "sideways_neutral"
+    ],
+    "blocked_regimes": [
+      "bull_risk_off",
+      "bear_risk_off",
+      "sideways_risk_off",
+      "bull_risk_on",
+      "sideways_risk_on"
+    ],
+    "signal_threshold_pred_z": 0.6,
+    "high_confidence_pred_z": 2.0,
+    "win_rate_at_high_conf": "67% (10/15 calls at pred_z > 1.5)",
+    "avg_return_pred_z_gt_2": "+0.242% per day"
+  },
+  "saved_files": {
+    "model": "model_outputs/cv_best_fold_model.pkl",
+    "fold_results": "model_outputs/cv_fold_results.csv",
+    "importance_folds": "model_outputs/cv_importance_per_fold.csv",
+    "importance_stable": "model_outputs/cv_importance_stable.csv",
+    "oof_predictions": "model_outputs/cv_predictions_oof.csv"
+  }
+}

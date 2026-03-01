@@ -1,0 +1,63 @@
+{
+  "splits": {
+    "train_rows": 2510,
+    "val_rows": 730,
+    "test_rows": 730,
+    "train_range": [
+      "2014-02-17",
+      "2020-12-31"
+    ],
+    "val_range": [
+      "2021-01-01",
+      "2022-12-31"
+    ],
+    "test_range": [
+      "2023-01-01",
+      "2024-12-30"
+    ]
+  },
+  "features": {
+    "num": [
+      "oof_prediction",
+      "pred_z",
+      "abs_pred_z",
+      "Macro_Fast"
+    ],
+    "cat": [
+      "Market_State"
+    ]
+  },
+  "model": "HistGradientBoostingClassifier + OneHot Market_State",
+  "metrics": {
+    "train_auc": 0.6219349212123666,
+    "val_auc": 0.44573333009763716,
+    "test_auc": 0.4947943424094529,
+    "train_logloss": 0.6317920845731752,
+    "val_logloss": 0.6731673567887063,
+    "test_logloss": 0.6699598075738556
+  },
+  "policy_search": {
+    "cost_bps": 5,
+    "max_trade_rate": 0.3,
+    "best_on_val": {
+      "p_long": 0.55,
+      "p_short": 0.24999999999999983,
+      "trades": 6,
+      "trade_rate": 0.00821917808219178,
+      "mean_pnl_all_days": -3.179598637442055e-06,
+      "mean_pnl_traded_days": -0.00013685116755545002,
+      "sum_pnl": -0.0023211070053327,
+      "hit_rate_traded_days": 0.16666666666666666
+    },
+    "test_with_best": {
+      "p_long": 0.55,
+      "p_short": 0.24999999999999983,
+      "trades": 2,
+      "trade_rate": 0.0027397260273972603,
+      "mean_pnl_all_days": -2.0030521020175205e-05,
+      "mean_pnl_traded_days": -0.006811140172363951,
+      "sum_pnl": -0.0146222803447279,
+      "hit_rate_traded_days": 0.0
+    }
+  }
+}

@@ -29,33 +29,32 @@ BASE_FEATURES = [
 CALIB_FEATURES = ['oof_prediction', 'pred_z', 'abs_pred_z', 'Macro_Fast', 'Market_State']
 
 
+def _single(ticker, start, end):
+    """Download one ticker, flatten any MultiIndex, return clean DataFrame."""
+    df = yf.Ticker(ticker).history(start=start, end=end, auto_adjust=False)
+    df.index = pd.to_datetime(df.index).tz_localize(None)
+    return df
+
+
 def fetch_data(start, end):
-    # Download each price ticker individually to avoid MultiIndex column misalignment
-    def dl_close(ticker, col_name):
-        raw = yf.download(ticker, start=start, end=end, auto_adjust=True, progress=False)
-        if isinstance(raw.columns, pd.MultiIndex):
-            raw.columns = raw.columns.get_level_values(0)
-        return raw[['Close']].rename(columns={'Close': col_name})
+    gold  = _single('GC=F',     start, end)
+    eur   = _single('EURUSD=X', start, end)
+    jpy   = _single('JPY=X',    start, end)
 
-    def dl_volume(ticker):
-        raw = yf.download(ticker, start=start, end=end, auto_adjust=True, progress=False)
-        if isinstance(raw.columns, pd.MultiIndex):
-            raw.columns = raw.columns.get_level_values(0)
-        return raw[['Volume']].rename(columns={'Volume': 'Volume'})
-
-    gold    = dl_close('GC=F',     'Close_XAUUSD')
-    eurusd  = dl_close('EURUSD=X', 'Close_EURUSD')
-    usdjpy  = dl_close('JPY=X',    'Close_USDJPY')
-    tnx     = dl_close('^TNX',     'TNX_Raw')
-    volume  = dl_volume('GC=F')[['Volume']]
-
-    close_df = gold.join(eurusd, how='left').join(usdjpy, how='left').join(tnx, how='left')
+    prices = pd.DataFrame({
+        'Close_XAUUSD': gold['Close'],
+        'Close_EURUSD': eur['Close'],
+        'Close_USDJPY': jpy['Close'],
+        'Volume':       gold['Volume'],
+    })
 
     fred  = Fred(api_key=FRED_API_KEY)
-    macro = pd.DataFrame({s: fred.get_series(s, start, end) for s in MACRO_SERIES})
-    macro.index = pd.to_datetime(macro.index)
+    macro = pd.DataFrame(
+        {s: fred.get_series(s, start, end) for s in MACRO_SERIES}
+    )
+    macro.index = pd.to_datetime(macro.index).tz_localize(None)
 
-    df = close_df.join(macro, how='left').join(volume, how='left').sort_index()
+    df = prices.join(macro, how='left').sort_index()
     df = df.ffill().dropna(subset=['Close_XAUUSD'])
     return df
 
@@ -87,10 +86,10 @@ def engineer_features(df):
     c20 = df['Close_Returns'].rolling(20)
     df['Return_ZScore'] = (df['Close_Returns'] - c20.mean()) / c20.std()
 
-    df['BB_Middle'] = df['Close_XAUUSD'].rolling(20).mean()
-    df['Return_Percentile'] = df['Close_Returns'].rolling(100).rank(pct=True)
-    df['Volume'] = df['Volume'].replace(0, np.nan).ffill()
-    df['Volume_Percentile'] = df['Volume'].rolling(100).rank(pct=True)
+    df['BB_Middle']          = df['Close_XAUUSD'].rolling(20).mean()
+    df['Return_Percentile']  = df['Close_Returns'].rolling(100).rank(pct=True)
+    df['Volume']             = df['Volume'].replace(0, np.nan).ffill()
+    df['Volume_Percentile']  = df['Volume'].rolling(100).rank(pct=True)
 
     macd = (df['Close_XAUUSD'].ewm(span=12, adjust=False).mean()
           - df['Close_XAUUSD'].ewm(span=26, adjust=False).mean())
@@ -129,7 +128,7 @@ def run_inference(feature_df, base_model, calibrator, oof_history):
 
     macro_fast       = float(today['Macro_Fast'].iloc[0])
     market_state     = int(today['Market_State'].iloc[0])
-    market_state_str = str(market_state)
+    market_state_str = str(market_state)   # calibrator OHE fitted on strings
 
     calib_input = pd.DataFrame(
         [[oof_pred, pred_z, abs_pred_z, macro_fast, market_state_str]],
@@ -154,212 +153,214 @@ def run_inference(feature_df, base_model, calibrator, oof_history):
     }
 
 
-DARK_CSS = """
+CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
 
 :root {
-    --bg:        #090909;
-    --surface:   #111111;
-    --border:    #222222;
-    --border2:   #2a2a2a;
-    --text:      #e8e8e8;
-    --muted:     #555555;
-    --accent:    #f0a500;
-    --buy:       #00c97a;
-    --sell:      #ff3b3b;
-    --neutral:   #888888;
-    --mono:      'IBM Plex Mono', monospace;
-    --sans:      'IBM Plex Sans', sans-serif;
+    --bg:      #080808;
+    --surf:    #101010;
+    --border:  #1e1e1e;
+    --b2:      #272727;
+    --text:    #e6e6e6;
+    --muted:   #4a4a4a;
+    --accent:  #f0a500;
+    --buy:     #00c47a;
+    --sell:    #ff3636;
+    --mono:    'IBM Plex Mono', monospace;
+    --sans:    'IBM Plex Sans', sans-serif;
 }
 
-/* ── global reset ── */
-html, body, [class*="css"] {
+/* ── base ── */
+html, body,
+[data-testid="stAppViewContainer"],
+[data-testid="stApp"],
+section.main,
+.main .block-container,
+[class*="css"] {
     background-color: var(--bg) !important;
     color: var(--text) !important;
     font-family: var(--sans) !important;
 }
 
-/* hide streamlit chrome */
-#MainMenu, footer, header { visibility: hidden; }
-.block-container { padding: 2rem 1.5rem 4rem !important; max-width: 780px !important; }
+[data-testid="stAppViewContainer"] > .main {
+    background-color: var(--bg) !important;
+}
 
-/* ── header bar ── */
-.xau-header {
+/* kill white flash on load */
+body { background: var(--bg) !important; }
+
+#MainMenu, footer, header { visibility: hidden !important; }
+.block-container {
+    padding: 2rem 1.4rem 5rem !important;
+    max-width: 760px !important;
+}
+
+/* ── header ── */
+.hdr {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    padding-bottom: 1.1rem;
     border-bottom: 1px solid var(--border);
-    padding-bottom: 1.2rem;
-    margin-bottom: 2rem;
+    margin-bottom: 1.8rem;
 }
-.xau-logo {
+.hdr-logo {
     font-family: var(--mono);
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     font-weight: 600;
-    letter-spacing: 0.2em;
+    letter-spacing: 0.22em;
     color: var(--accent);
     text-transform: uppercase;
 }
-.xau-timestamp {
+.hdr-ts {
     font-family: var(--mono);
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     color: var(--muted);
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
 }
 
-/* ── run button ── */
+/* ── button ── */
 div.stButton > button {
     background: var(--accent) !important;
     color: #000 !important;
     border: none !important;
-    border-radius: 2px !important;
+    border-radius: 1px !important;
     font-family: var(--mono) !important;
-    font-size: 0.72rem !important;
+    font-size: 0.7rem !important;
     font-weight: 600 !important;
-    letter-spacing: 0.15em !important;
+    letter-spacing: 0.18em !important;
     text-transform: uppercase !important;
-    padding: 0.65rem 2rem !important;
+    padding: 0.7rem 1.5rem !important;
     width: 100% !important;
-    transition: opacity 0.15s ease !important;
+    transition: opacity 0.12s !important;
 }
-div.stButton > button:hover { opacity: 0.85 !important; }
+div.stButton > button:hover { opacity: 0.8 !important; }
 
-/* ── signal banner ── */
-.sig-banner {
+/* ── signal card ── */
+.sig-card {
+    position: relative;
     border: 1px solid var(--border);
-    padding: 2rem 1.5rem;
-    margin: 1.5rem 0;
+    padding: 1.8rem 1.4rem 1.8rem 1.7rem;
+    margin: 1.4rem 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    position: relative;
+    background: var(--surf);
     overflow: hidden;
 }
-.sig-banner::before {
+.sig-card::before {
     content: '';
     position: absolute;
     left: 0; top: 0; bottom: 0;
     width: 3px;
 }
-.sig-buy   { border-color: var(--buy);  }
-.sig-buy::before   { background: var(--buy);  }
-.sig-sell  { border-color: var(--sell); }
-.sig-sell::before  { background: var(--sell); }
-.sig-none  { border-color: var(--border2); }
-.sig-none::before  { background: var(--muted); }
+.sig-buy  { border-color: var(--buy); }
+.sig-buy::before  { background: var(--buy); }
+.sig-sell { border-color: var(--sell); }
+.sig-sell::before { background: var(--sell); }
+.sig-none { border-color: var(--b2); }
+.sig-none::before { background: var(--muted); }
 
-.sig-label {
+.sig-main { font-family: var(--mono); font-size: 1.9rem; font-weight: 600; letter-spacing: 0.08em; }
+.sig-buy  .sig-main { color: var(--buy);  }
+.sig-sell .sig-main { color: var(--sell); }
+.sig-none .sig-main { color: var(--muted); }
+
+.sig-meta {
     font-family: var(--mono);
-    font-size: 2rem;
-    font-weight: 600;
+    font-size: 0.62rem;
+    color: var(--muted);
     letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-top: 0.35rem;
 }
-.sig-buy  .sig-label { color: var(--buy);  }
-.sig-sell .sig-label { color: var(--sell); }
-.sig-none .sig-label { color: var(--muted); }
-
-.sig-sub {
+.sig-why {
     font-family: var(--mono);
     font-size: 0.65rem;
     color: var(--muted);
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    margin-top: 0.3rem;
-}
-.sig-reason {
-    font-family: var(--mono);
-    font-size: 0.68rem;
-    color: var(--muted);
     text-align: right;
-    line-height: 1.7;
+    line-height: 1.8;
 }
 
-/* ── stat grid ── */
-.stat-grid {
+/* ── 2x2 grid ── */
+.kpi-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1px;
     background: var(--border);
     border: 1px solid var(--border);
-    margin: 1.5rem 0;
+    margin: 1.4rem 0;
 }
-.stat-cell {
-    background: var(--surface);
-    padding: 1.1rem 1.2rem;
+.kpi-cell {
+    background: var(--surf);
+    padding: 1rem 1.1rem;
 }
-.stat-label {
+.kpi-lbl {
     font-family: var(--mono);
-    font-size: 0.6rem;
+    font-size: 0.58rem;
     color: var(--muted);
-    letter-spacing: 0.15em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
-    margin-bottom: 0.4rem;
+    margin-bottom: 0.35rem;
 }
-.stat-value {
+.kpi-val {
     font-family: var(--mono);
-    font-size: 1.25rem;
+    font-size: 1.2rem;
     font-weight: 500;
     color: var(--text);
-    letter-spacing: 0.02em;
 }
-.stat-value.bull { color: var(--buy);  }
-.stat-value.bear { color: var(--sell); }
-.stat-value.accent { color: var(--accent); }
+.kpi-val.gold   { color: var(--accent); }
+.kpi-val.bull   { color: var(--buy);    }
+.kpi-val.bear   { color: var(--sell);   }
 
 /* ── detail table ── */
-.detail-block {
+.tbl {
     border: 1px solid var(--border);
-    margin-top: 1.5rem;
+    margin-top: 1.4rem;
+    background: var(--surf);
 }
-.detail-header {
+.tbl-hdr {
     font-family: var(--mono);
-    font-size: 0.6rem;
+    font-size: 0.58rem;
     letter-spacing: 0.2em;
     text-transform: uppercase;
     color: var(--muted);
-    padding: 0.7rem 1.2rem;
+    padding: 0.65rem 1.2rem;
     border-bottom: 1px solid var(--border);
     background: var(--bg);
 }
-.detail-row {
+.tbl-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.65rem 1.2rem;
+    padding: 0.6rem 1.2rem;
     border-bottom: 1px solid var(--border);
     font-family: var(--mono);
-    font-size: 0.72rem;
+    font-size: 0.7rem;
 }
-.detail-row:last-child { border-bottom: none; }
-.detail-key   { color: var(--muted); letter-spacing: 0.05em; }
-.detail-val   { color: var(--text);  font-weight: 500; }
-.detail-val.buy  { color: var(--buy);  }
-.detail-val.sell { color: var(--sell); }
-.detail-val.none { color: var(--muted); }
+.tbl-row:last-child { border-bottom: none; }
+.tbl-k { color: var(--muted); }
+.tbl-v { color: var(--text); font-weight: 500; }
+.tbl-v.buy  { color: var(--buy);   }
+.tbl-v.sell { color: var(--sell);  }
+.tbl-v.none { color: var(--muted); }
 
-/* ── spinner / info / error ── */
-.stSpinner > div { border-top-color: var(--accent) !important; }
-div[data-testid="stAlert"] {
-    background: var(--surface) !important;
-    border: 1px solid var(--border2) !important;
-    border-radius: 2px !important;
-    font-family: var(--mono) !important;
-    font-size: 0.72rem !important;
-    color: var(--muted) !important;
-}
-
-/* ── idle state ── */
-.idle-msg {
+/* ── idle ── */
+.idle {
     font-family: var(--mono);
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     color: var(--muted);
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
     text-align: center;
-    padding: 3rem 0;
-    border: 1px dashed var(--border2);
-    margin-top: 1.5rem;
+    padding: 3.5rem 0;
+    border: 1px dashed var(--b2);
+    margin-top: 1.4rem;
+    background: var(--surf);
 }
+
+/* ── spinner ── */
+.stSpinner > div { border-top-color: var(--accent) !important; }
 </style>
 """
 
@@ -371,24 +372,19 @@ def main():
         layout="centered",
         initial_sidebar_state="collapsed"
     )
-
-    st.markdown(DARK_CSS, unsafe_allow_html=True)
+    st.markdown(CSS, unsafe_allow_html=True)
 
     now = datetime.now()
     st.markdown(f"""
-    <div class="xau-header">
-        <div>
-            <div class="xau-logo">⬡ &nbsp; XAU / USD &nbsp; Intelligence</div>
-        </div>
-        <div class="xau-timestamp">{now.strftime("%Y-%m-%d &nbsp;&nbsp; %H:%M:%S UTC")}</div>
+    <div class="hdr">
+        <div class="hdr-logo">⬡ &nbsp; XAU / USD &nbsp; Intelligence</div>
+        <div class="hdr-ts">{now.strftime('%Y-%m-%d &nbsp; %H:%M:%S')}</div>
     </div>
     """, unsafe_allow_html=True)
 
-    run = st.button("RUN INFERENCE", type="primary", use_container_width=True)
-
-    if run:
+    if st.button("▶  RUN INFERENCE", use_container_width=True):
         try:
-            with st.spinner("Fetching market & macro data..."):
+            with st.spinner("Fetching market data..."):
                 end   = now
                 start = end - timedelta(days=DAYS_BACK)
                 df    = fetch_data(start, end)
@@ -402,78 +398,72 @@ def main():
             with st.spinner("Running inference..."):
                 r = run_inference(features, base_model, calibrator, oof_history)
 
-            signal = r["signal"]
-            sig_cls = {"BUY": "sig-buy", "SELL": "sig-sell", "NO SIGNAL": "sig-none"}[signal]
+            signal  = r["signal"]
+            sc      = {"BUY": "sig-buy", "SELL": "sig-sell", "NO SIGNAL": "sig-none"}[signal]
+            label   = "BULL" if r["market_state"] == 1 else "BEAR" if r["market_state"] == -1 else "NEUTRAL"
+            lc      = "bull" if r["market_state"] == 1 else "bear" if r["market_state"] == -1 else ""
+            vc      = {"BUY": "buy", "SELL": "sell", "NO SIGNAL": "none"}[signal]
 
-            reason_html = ""
+            why = ""
             if signal == "NO SIGNAL":
-                lines = []
+                parts = []
                 if r["abs_pred_z"] < CONVICTION_THRESHOLD:
-                    lines.append(f"|pred_z| {r['abs_pred_z']:.2f} &lt; {CONVICTION_THRESHOLD} threshold")
+                    parts.append(f"|z| {r['abs_pred_z']:.2f} &lt; {CONVICTION_THRESHOLD}")
                 if r["prob_success"] < PROB_THRESHOLD:
-                    lines.append(f"prob {r['prob_success']:.4f} &lt; {PROB_THRESHOLD} threshold")
-                reason_html = "<br>".join(lines)
+                    parts.append(f"prob {r['prob_success']:.4f} &lt; {PROB_THRESHOLD}")
+                why = "<br>".join(parts)
 
             st.markdown(f"""
-            <div class="sig-banner {sig_cls}">
+            <div class="sig-card {sc}">
                 <div>
-                    <div class="sig-label">{signal}</div>
-                    <div class="sig-sub">XAUUSD · {r['date']} · Daily Close Signal</div>
+                    <div class="sig-main">{signal}</div>
+                    <div class="sig-meta">XAUUSD &nbsp;·&nbsp; {r['date']} &nbsp;·&nbsp; Daily Close</div>
                 </div>
-                <div class="sig-reason">{reason_html}</div>
+                <div class="sig-why">{why}</div>
             </div>
             """, unsafe_allow_html=True)
 
-            label     = "BULL" if r["market_state"] == 1 else "BEAR" if r["market_state"] == -1 else "NEUTRAL"
-            label_cls = "bull" if r["market_state"] == 1 else "bear" if r["market_state"] == -1 else ""
-            prob_pct  = f"{r['prob_success']:.1%}"
-            macro_sign = "TIGHT" if r["macro_fast"] > 0 else "EASY"
-
+            macro_lbl = "TIGHT" if r["macro_fast"] > 0 else "EASY"
             st.markdown(f"""
-            <div class="stat-grid">
-                <div class="stat-cell">
-                    <div class="stat-label">XAUUSD Close</div>
-                    <div class="stat-value accent">${r['Close_XAUUSD']:,.2f}</div>
+            <div class="kpi-grid">
+                <div class="kpi-cell">
+                    <div class="kpi-lbl">XAUUSD Close</div>
+                    <div class="kpi-val gold">${r['Close_XAUUSD']:,.2f}</div>
                 </div>
-                <div class="stat-cell">
-                    <div class="stat-label">Market Regime</div>
-                    <div class="stat-value {label_cls}">{label}</div>
+                <div class="kpi-cell">
+                    <div class="kpi-lbl">Market Regime</div>
+                    <div class="kpi-val {lc}">{label}</div>
                 </div>
-                <div class="stat-cell">
-                    <div class="stat-label">Prob Success</div>
-                    <div class="stat-value">{prob_pct}</div>
+                <div class="kpi-cell">
+                    <div class="kpi-lbl">Prob Success</div>
+                    <div class="kpi-val">{r['prob_success']:.1%}</div>
                 </div>
-                <div class="stat-cell">
-                    <div class="stat-label">Macro Pressure</div>
-                    <div class="stat-value">{macro_sign} &nbsp;<span style="font-size:0.85rem;color:var(--muted)">({r['macro_fast']:+.3f})</span></div>
+                <div class="kpi-cell">
+                    <div class="kpi-lbl">Macro Pressure</div>
+                    <div class="kpi-val">{macro_lbl} <span style="font-size:.8rem;color:var(--muted)">({r['macro_fast']:+.3f})</span></div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
-            sig_val_cls = {"BUY": "buy", "SELL": "sell", "NO SIGNAL": "none"}[signal]
             rows = [
-                ("DATE",             r["date"]),
-                ("CLOSE PRICE",      f"${r['Close_XAUUSD']:,.2f}"),
-                ("BASE PREDICTION",  f"{r['oof_prediction']:+.6f}"),
-                ("PRED Z-SCORE",     f"{r['pred_z']:+.4f}"),
-                ("ABS PRED Z",       f"{r['abs_pred_z']:.4f}"),
-                ("PROB SUCCESS",     f"{r['prob_success']:.4f}"),
-                ("MACRO FAST",       f"{r['macro_fast']:+.4f}"),
-                ("MARKET STATE",     f"{r['market_state']} ({label})"),
-                ("SIGNAL",           signal),
+                ("DATE",            r["date"],                          ""),
+                ("CLOSE PRICE",     f"${r['Close_XAUUSD']:,.2f}",       "gold"),
+                ("BASE PREDICTION", f"{r['oof_prediction']:+.6f}",      ""),
+                ("PRED Z-SCORE",    f"{r['pred_z']:+.4f}",              ""),
+                ("ABS PRED Z",      f"{r['abs_pred_z']:.4f}",           ""),
+                ("PROB SUCCESS",    f"{r['prob_success']:.4f}",         ""),
+                ("MACRO FAST",      f"{r['macro_fast']:+.4f}",          ""),
+                ("MARKET STATE",    f"{r['market_state']} ({label})",   ""),
+                ("SIGNAL",          signal,                             vc),
             ]
-            rows_html = ""
-            for key, val in rows:
-                vc = sig_val_cls if key == "SIGNAL" else ""
-                rows_html += f"""
-                <div class="detail-row">
-                    <span class="detail-key">{key}</span>
-                    <span class="detail-val {vc}">{val}</span>
-                </div>"""
-
+            rows_html = "".join(
+                f'<div class="tbl-row"><span class="tbl-k">{k}</span>'
+                f'<span class="tbl-v {c}">{v}</span></div>'
+                for k, v, c in rows
+            )
             st.markdown(f"""
-            <div class="detail-block">
-                <div class="detail-header">Full Output</div>
+            <div class="tbl">
+                <div class="tbl-hdr">Full Output</div>
                 {rows_html}
             </div>
             """, unsafe_allow_html=True)
@@ -483,11 +473,10 @@ def main():
         except Exception as e:
             st.exception(e)
     else:
-        st.markdown("""
-        <div class="idle-msg">
-            Press RUN INFERENCE to generate today's signal
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            '<div class="idle">Press ▶ RUN INFERENCE to generate today\'s signal</div>',
+            unsafe_allow_html=True
+        )
 
 
 if __name__ == "__main__":

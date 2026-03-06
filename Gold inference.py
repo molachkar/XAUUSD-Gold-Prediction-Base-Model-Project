@@ -16,7 +16,7 @@ CONVICTION_THRESHOLD = 1.0
 PRED_Z_LOOKBACK      = 252
 FRED_API_KEY         = "219d0c44b2e3b4a8b690c3f69b91a5bb"
 MACRO_SERIES         = ['DFII10', 'DFII5', 'DGS2', 'FEDFUNDS']
-ARTEFACT_DIR         = "/home/uniquex/Desktop/off predictions"
+ARTEFACT_DIR         = os.path.dirname(os.path.abspath(__file__))
 
 BASE_FEATURES = [
     'Macro_Fast', 'Market_State', 'Close_XAUUSD', 'LogReturn_ZScore',

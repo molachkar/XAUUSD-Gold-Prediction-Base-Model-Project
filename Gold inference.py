@@ -16,7 +16,7 @@ CONVICTION_THRESHOLD = 1.0
 PRED_Z_LOOKBACK      = 252
 FRED_API_KEY         = "219d0c44b2e3b4a8b690c3f69b91a5bb"
 MACRO_SERIES         = ['DFII10', 'DFII5', 'DGS2', 'FEDFUNDS']
-ARTEFACT_DIR         = "/home/uniquex/Desktop/off predictions/decison_tree training/live trading"
+ARTEFACT_DIR         = "/home/uniquex/Desktop/off predictions"
 
 BASE_FEATURES = [
     'Macro_Fast', 'Market_State', 'Close_XAUUSD', 'LogReturn_ZScore',
@@ -127,13 +127,14 @@ def run_inference(feature_df, base_model, calibrator, oof_history):
     abs_pred_z = abs(pred_z)
 
     macro_fast   = float(today['Macro_Fast'].iloc[0])
-    market_state = int(today['Market_State'].iloc[0])   # int — calibrator receives int
+    market_state = int(today['Market_State'].iloc[0])
+    market_state_str = str(market_state)  # calibrator OHE was fitted on strings '-1','0','1'
 
     calib_input = pd.DataFrame(
-        [[oof_pred, pred_z, abs_pred_z, macro_fast, market_state]],
+        [[oof_pred, pred_z, abs_pred_z, macro_fast, market_state_str]],
         columns=CALIB_FEATURES
     )
-    calib_input['Market_State'] = calib_input['Market_State'].astype(int)
+    calib_input['Market_State'] = calib_input['Market_State'].astype(str)
     prob = float(calibrator.predict_proba(calib_input)[0][1])
 
     signal = "NO SIGNAL"

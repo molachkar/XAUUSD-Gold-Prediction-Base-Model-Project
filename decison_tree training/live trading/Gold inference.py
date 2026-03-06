@@ -1,18 +1,18 @@
 import os
 import pickle
 import warnings
-import argparse
 import pandas as pd
 import numpy as np
 import yfinance as yf
+import streamlit as st
 from datetime import datetime, timedelta
 from fredapi import Fred
 
 warnings.filterwarnings("ignore")
 
 DAYS_BACK            = 500
-PROB_THRESHOLD       = 0.50
-CONVICTION_THRESHOLD = 0.8
+PROB_THRESHOLD       = 0.52
+CONVICTION_THRESHOLD = 1.0
 PRED_Z_LOOKBACK      = 252
 FRED_API_KEY         = "219d0c44b2e3b4a8b690c3f69b91a5bb"
 MACRO_SERIES         = ['DFII10', 'DFII5', 'DGS2', 'FEDFUNDS']
@@ -29,8 +29,6 @@ CALIB_FEATURES = ['oof_prediction', 'pred_z', 'abs_pred_z', 'Macro_Fast', 'Marke
 
 
 def fetch_data(start, end):
-    print("Fetching Yahoo Finance data...")
-
     TICKER_MAP = {
         'GC=F':     'Close_XAUUSD',
         'EURUSD=X': 'Close_EURUSD',
@@ -47,7 +45,6 @@ def fetch_data(start, end):
         close_df = raw[['Close']].rename(columns={'Close': 'Close_XAUUSD'})
         volume   = raw['Volume'].rename('Volume')
 
-    print("Fetching FRED macro data...")
     fred  = Fred(api_key=FRED_API_KEY)
     macro = pd.DataFrame(
         {s: fred.get_series(s, start, end) for s in MACRO_SERIES}
@@ -55,14 +52,11 @@ def fetch_data(start, end):
     macro.index = pd.to_datetime(macro.index)
 
     df = close_df.join(macro, how='left').join(volume, how='left').sort_index()
-    df = df.ffill().dropna(subset=['Close_XAUUSD'])  # FRED is sparse; left-join then ffill
-    print(f"Raw data: {len(df)} rows  ({df.index[0].date()} -> {df.index[-1].date()})")
+    df = df.ffill().dropna(subset=['Close_XAUUSD'])
     return df
 
 
 def engineer_features(df):
-    print("Engineering features...")
-
     z_cols = []
     for col in MACRO_SERIES:
         df[f"{col}_delta"] = df[col].diff()
@@ -77,7 +71,7 @@ def engineer_features(df):
 
     ema50   = df['Close_XAUUSD'].ewm(span=50,  adjust=False).mean()
     ema200  = df['Close_XAUUSD'].ewm(span=200, adjust=False).mean()
-    mkt_vol = df['Close_Returns'].shift(1).rolling(20).std()  # causal: t-20..t-1 per spec
+    mkt_vol = df['Close_Returns'].shift(1).rolling(20).std()
     vol_med = mkt_vol.expanding().median()
     df['Market_State'] = 0
     df.loc[(ema50 > ema200) & (mkt_vol < vol_med), 'Market_State'] = 1
@@ -92,7 +86,7 @@ def engineer_features(df):
     df['BB_Middle'] = df['Close_XAUUSD'].rolling(20).mean()
 
     df['Return_Percentile'] = df['Close_Returns'].rolling(100).rank(pct=True)
-    df['Volume'] = df['Volume'].replace(0, np.nan).ffill()   # guard: GC=F vol delayed 24h
+    df['Volume'] = df['Volume'].replace(0, np.nan).ffill()
     df['Volume_Percentile'] = df['Volume'].rolling(100).rank(pct=True)
 
     macd = (df['Close_XAUUSD'].ewm(span=12, adjust=False).mean()
@@ -103,14 +97,10 @@ def engineer_features(df):
     df['Distance_From_AllTimeHigh'] = ath - df['Close_XAUUSD']
     df['Pct_From_AllTimeHigh']      = (df['Distance_From_AllTimeHigh'] / ath) * 100
 
-    clean = df[BASE_FEATURES].dropna()
-    print(f"Feature matrix ready: {len(clean)} rows")
-    return clean
+    return df[BASE_FEATURES].dropna()
 
 
 def load_artefacts(base_dir):
-    print("Loading model artefacts...")
-
     def load(name):
         with open(os.path.join(base_dir, name), 'rb') as f:
             return pickle.load(f)
@@ -121,13 +111,10 @@ def load_artefacts(base_dir):
         os.path.join(base_dir, "cv_predictions_oof.csv"),
         index_col=0, parse_dates=True
     )
-    print(f"OOF history: {len(oof_history)} rows")
     return base_model, calibrator, oof_history
 
 
 def run_inference(feature_df, base_model, calibrator, oof_history):
-    print("Running inference...")
-
     today      = feature_df.iloc[[-1]].copy()
     today_date = today.index[0].date()
 
@@ -138,9 +125,9 @@ def run_inference(feature_df, base_model, calibrator, oof_history):
     pred_z     = float((oof_pred - hist.mean()) / hist.std()) if hist.std() != 0 else 0.0
     abs_pred_z = abs(pred_z)
 
-    macro_fast   = float(today['Macro_Fast'].iloc[0])
-    market_state = int(today['Market_State'].iloc[0])
-    market_state_str = str(market_state)  # OHE trained on string categories '-1','0','1'
+    macro_fast       = float(today['Macro_Fast'].iloc[0])
+    market_state     = int(today['Market_State'].iloc[0])
+    market_state_str = str(market_state)
 
     calib_input = pd.DataFrame(
         [[oof_pred, pred_z, abs_pred_z, macro_fast, market_state_str]],
@@ -166,39 +153,99 @@ def run_inference(feature_df, base_model, calibrator, oof_history):
     }
 
 
-def main(artefact_dir="."):
-    print(f"GOLD XAUUSD INFERENCE | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+def main():
+    st.set_page_config(page_title="Gold XAUUSD Inference", page_icon="🥇", layout="centered")
 
-    end   = datetime.now()
-    start = end - timedelta(days=DAYS_BACK)
+    st.title("🥇 Gold XAUUSD Daily Signal")
+    st.caption(f"Model: LightGBM + HistGradientBoosting Calibrator  |  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-    df       = fetch_data(start, end)
-    features = engineer_features(df)
-    base_model, calibrator, oof_history = load_artefacts(artefact_dir)
-    result   = run_inference(features, base_model, calibrator, oof_history)
+    # ── Sidebar: artefact directory ──
+    artefact_dir = st.sidebar.text_input(
+        "Artefacts directory",
+        value=".",
+        help="Folder containing cv_best_fold_model.pkl, calibrator.pkl, cv_predictions_oof.csv"
+    )
 
-    label = 'Bull' if result['market_state'] == 1 else 'Bear' if result['market_state'] == -1 else 'Neutral'
-    print()
-    print(f"DATE         : {result['date']}")
-    print(f"XAUUSD CLOSE : {result['Close_XAUUSD']:.2f}")
-    print(f"MACRO FAST   : {result['macro_fast']:+.4f}")
-    print(f"MARKET STATE : {result['market_state']} ({label})")
-    print(f"BASE PRED    : {result['oof_prediction']:+.6f}")
-    print(f"PRED Z-SCORE : {result['pred_z']:+.4f}")
-    print(f"PROB SUCCESS : {result['prob_success']:.4f}")
-    print(f"SIGNAL       : {result['signal']}")
-    if result['signal'] == 'NO SIGNAL':
-        if result['abs_pred_z'] < CONVICTION_THRESHOLD:
-            print(f"  reason: |pred_z| {result['abs_pred_z']:.2f} < {CONVICTION_THRESHOLD}")
-        if result['prob_success'] < PROB_THRESHOLD:
-            print(f"  reason: prob {result['prob_success']:.4f} < {PROB_THRESHOLD}")
-    print()
-    return result
+    if st.sidebar.button("Run Inference", type="primary", use_container_width=True):
+        try:
+            with st.spinner("Fetching market data..."):
+                end   = datetime.now()
+                start = end - timedelta(days=DAYS_BACK)
+                df    = fetch_data(start, end)
+
+            st.sidebar.success(f"Data: {len(df)} rows  ({df.index[0].date()} → {df.index[-1].date()})")
+
+            with st.spinner("Engineering features..."):
+                features = engineer_features(df)
+
+            st.sidebar.info(f"Feature rows: {len(features)}")
+
+            with st.spinner("Loading artefacts..."):
+                base_model, calibrator, oof_history = load_artefacts(artefact_dir)
+
+            st.sidebar.info(f"OOF history: {len(oof_history)} rows")
+
+            with st.spinner("Running inference..."):
+                result = run_inference(features, base_model, calibrator, oof_history)
+
+            # ── Signal banner ──
+            signal = result["signal"]
+            if signal == "BUY":
+                st.success(f"## ✅ SIGNAL: BUY", icon="📈")
+            elif signal == "SELL":
+                st.error(f"## 🔻 SIGNAL: SELL", icon="📉")
+            else:
+                st.warning(f"## ⏸ NO SIGNAL", icon="🔇")
+                reasons = []
+                if result["abs_pred_z"] < CONVICTION_THRESHOLD:
+                    reasons.append(f"|pred_z| = {result['abs_pred_z']:.2f} (threshold: {CONVICTION_THRESHOLD})")
+                if result["prob_success"] < PROB_THRESHOLD:
+                    reasons.append(f"prob = {result['prob_success']:.4f} (threshold: {PROB_THRESHOLD})")
+                for r in reasons:
+                    st.caption(f"↳ {r}")
+
+            st.divider()
+
+            # ── Key metrics row ──
+            label = "Bull 🐂" if result["market_state"] == 1 else "Bear 🐻" if result["market_state"] == -1 else "Neutral ➡️"
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("XAUUSD Close",  f"${result['Close_XAUUSD']:,.2f}")
+            c2.metric("Market State",  label)
+            c3.metric("Prob Success",  f"{result['prob_success']:.1%}")
+            c4.metric("Pred Z-Score",  f"{result['pred_z']:+.4f}")
+
+            st.divider()
+
+            # ── Full detail table ──
+            st.subheader("Full Output")
+            detail = {
+                "Field": [
+                    "Date", "XAUUSD Close", "Macro Fast",
+                    "Market State", "Base Prediction",
+                    "Pred Z-Score", "Abs Pred Z", "Prob Success", "Signal"
+                ],
+                "Value": [
+                    result["date"],
+                    f"${result['Close_XAUUSD']:,.2f}",
+                    f"{result['macro_fast']:+.4f}",
+                    f"{result['market_state']} ({label})",
+                    f"{result['oof_prediction']:+.6f}",
+                    f"{result['pred_z']:+.4f}",
+                    f"{result['abs_pred_z']:.4f}",
+                    f"{result['prob_success']:.4f}",
+                    signal,
+                ]
+            }
+            st.table(pd.DataFrame(detail))
+
+        except FileNotFoundError as e:
+            st.error(f"Artefact not found: {e}\n\nCheck the directory path in the sidebar.")
+        except Exception as e:
+            st.exception(e)
+
+    else:
+        st.info("Set the artefacts directory in the sidebar, then click **Run Inference**.")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dir", type=str, default=".",
-                        help="Directory containing pkl and csv artefacts")
-    args = parser.parse_args()
-    main(artefact_dir=args.dir)
+    main()

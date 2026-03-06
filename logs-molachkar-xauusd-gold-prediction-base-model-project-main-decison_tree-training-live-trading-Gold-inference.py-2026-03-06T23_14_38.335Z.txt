@@ -1,0 +1,88 @@
+
+[     UTC     ] Logs for xauusd-gold-prediction-base-model-project-t9zb2tmrsgjwjv9bt3em.streamlit.app/
+────────────────────────────────────────────────────────────────────────────────────────
+[23:10:50] 🖥 Provisioning machine...
+[23:10:50] 🎛 Preparing system...
+[23:10:50] ⛓ Spinning up manager process...
+[23:10:48] 🚀 Starting up repository: 'xauusd-gold-prediction-base-model-project', branch: 'main', main module: 'decison_tree training/live trading/Gold inference.py'
+[23:10:48] 🐙 Cloning repository...
+[23:10:49] 🐙 Cloning into '/mount/src/xauusd-gold-prediction-base-model-project'...
+
+[23:10:49] 🐙 Cloned repository!
+[23:10:49] 🐙 Pulling code changes from Github...
+[23:10:50] 📦 Processing dependencies...
+
+──────────────────────────────────────── uv ───────────────────────────────────────────
+
+Using uv pip install.
+error: Failed to parse: `trading/requirements.txt`
+  Caused by: Expected path (`trading/requirements.txt`) to end in a supported file extension: `.whl`, `.tar.gz`, `.zip`, `.tar.bz2`, `.tar.lz`, `.tar.lzma`, `.tar.xz`, `.tar.zst`, `.tar`, `.tbz`, `.tgz`, `.tlz`, or `.txz`
+trading/requirements.txt
+^^^^^^^^^^^^^^^^^^^^^^^^
+Checking if Streamlit is installed
+Installing rich for an improved exception logging
+Using uv pip install.
+Using Python 3.14.3 environment at /home/adminuser/venv
+Resolved 4 packages in 141ms
+Prepared 4 packages in 110ms
+Installed 4 packages in 14ms
+ + markdown-it-py==4.0.0
+ + mdurl==0.1.2
+ + pygments==2.19.2
+ + rich==14.3.3
+
+────────────────────────────────────────────────────────────────────────────────────────
+
+
+──────────────────────────────────────── pip ───────────────────────────────────────────
+
+Using standard pip install.
+ERROR: Invalid requirement: 'training/live'
+Hint: It looks like a path. File 'training/live' does not exist.
+
+[notice] A new release of pip is available: 24.0 -> 26.0.1
+[notice] To update, run: pip install --upgrade pip
+Checking if Streamlit is installed
+Installing rich for an improved exception logging
+Using standard pip install.
+Collecting rich>=10.14.0
+  Downloading rich-14.3.3-py3-none-any.whl.metadata (18 kB)
+Collecting markdown-it-py>=2.2.0 (from rich>=10.14.0)
+  Downloading markdown_it_py-4.0.0-py3-none-any.whl.metadata (7.3 kB)
+Collecting pygments<3.0.0,>=2.13.0 (from rich>=10.14.0)
+  Downloading pygments-2.19.2-py3-none-any.whl.metadata (2.5 kB)
+Collecting mdurl~=0.1 (from markdown-it-py>=2.2.0->rich>=10.14.0)
+  Downloading mdurl-0.1.2-py3-none-any.whl.metadata (1.6 kB)
+Downloading rich-14.3.3-py3-none-any.whl (310 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 310.5/310.5 kB 15.1 MB/s eta 0:00:00[2026-03-06 23:10:52.986846] 
+Downloading markdown_it_py-4.0.0-py3-none-any.whl (87 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 87.3/87.3 kB 281.0 MB/s eta 0:00:00[2026-03-06 23:10:52.999064] 
+Downloading pygments-2.19.2-py3-none-any.whl (1.2 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 88.0 MB/s eta 0:00:00[2026-03-06 23:10:53.025035] 
+Downloading mdurl-0.1.2-py3-none-any.whl (10.0 kB)
+Installing collected packages: pygments, mdurl, markdown-it-py, rich
+  Attempting uninstall: pygments
+    Found existing installation: Pygments 2.19.2
+    Uninstalling Pygments-2.19.2:
+      Successfully uninstalled Pygments-2.19.2
+  Attempting uninstall: mdurl
+    Found existing installation: mdurl 0.1.2
+    Uninstalling mdurl-0.1.2:
+      Successfully uninstalled mdurl-0.1.2
+  Attempting uninstall: markdown-it-py
+    Found existing installation: markdown-it-py 4.0.0
+    Uninstalling markdown-it-py-4.0.0:
+      Successfully uninstalled markdown-it-py-4.0.0
+  Attempting uninstall: rich
+    Found existing installation: rich 14.3.3
+    Uninstalling rich-14.3.3:
+      Successfully uninstalled rich-14.3.3
+Successfully installed markdown-it-py-4.0.0 mdurl-0.1.2 pygments-2.19.2 rich-14.3.3
+
+[notice] A new release of pip is available: 24.0 -> 26.0.1
+[notice] To update, run: pip install --upgrade pip
+
+────────────────────────────────────────────────────────────────────────────────────────
+
+[23:10:56] ❗️ installer returned a non-zero exit code
+[23:10:56] ❗️ Error during processing dependencies! Please fix the error and push an update, or try restarting the app.

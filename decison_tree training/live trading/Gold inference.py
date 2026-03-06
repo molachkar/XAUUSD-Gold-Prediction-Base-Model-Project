@@ -16,6 +16,7 @@ CONVICTION_THRESHOLD = 1.0
 PRED_Z_LOOKBACK      = 252
 FRED_API_KEY         = "219d0c44b2e3b4a8b690c3f69b91a5bb"
 MACRO_SERIES         = ['DFII10', 'DFII5', 'DGS2', 'FEDFUNDS']
+ARTEFACT_DIR         = "/home/uniquex/Desktop/off predictions/decison_tree training/live trading"
 
 BASE_FEATURES = [
     'Macro_Fast', 'Market_State', 'Close_XAUUSD', 'LogReturn_ZScore',
@@ -100,15 +101,15 @@ def engineer_features(df):
     return df[BASE_FEATURES].dropna()
 
 
-def load_artefacts(base_dir):
+def load_artefacts():
     def load(name):
-        with open(os.path.join(base_dir, name), 'rb') as f:
+        with open(os.path.join(ARTEFACT_DIR, name), 'rb') as f:
             return pickle.load(f)
 
     base_model  = load("cv_best_fold_model.pkl")
     calibrator  = load("calibrator.pkl")
     oof_history = pd.read_csv(
-        os.path.join(base_dir, "cv_predictions_oof.csv"),
+        os.path.join(ARTEFACT_DIR, "cv_predictions_oof.csv"),
         index_col=0, parse_dates=True
     )
     return base_model, calibrator, oof_history
@@ -125,15 +126,14 @@ def run_inference(feature_df, base_model, calibrator, oof_history):
     pred_z     = float((oof_pred - hist.mean()) / hist.std()) if hist.std() != 0 else 0.0
     abs_pred_z = abs(pred_z)
 
-    macro_fast       = float(today['Macro_Fast'].iloc[0])
-    market_state     = int(today['Market_State'].iloc[0])
-    market_state_str = str(market_state)
+    macro_fast   = float(today['Macro_Fast'].iloc[0])
+    market_state = int(today['Market_State'].iloc[0])   # int — calibrator receives int
 
     calib_input = pd.DataFrame(
-        [[oof_pred, pred_z, abs_pred_z, macro_fast, market_state_str]],
+        [[oof_pred, pred_z, abs_pred_z, macro_fast, market_state]],
         columns=CALIB_FEATURES
     )
-    calib_input['Market_State'] = calib_input['Market_State'].astype(str)
+    calib_input['Market_State'] = calib_input['Market_State'].astype(int)
     prob = float(calibrator.predict_proba(calib_input)[0][1])
 
     signal = "NO SIGNAL"
@@ -154,75 +154,66 @@ def run_inference(feature_df, base_model, calibrator, oof_history):
 
 
 def main():
-    st.set_page_config(page_title="Gold XAUUSD Inference", page_icon="🥇", layout="centered")
-
-    st.title("🥇 Gold XAUUSD Daily Signal")
-    st.caption(f"Model: LightGBM + HistGradientBoosting Calibrator  |  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
-    # ── Sidebar: artefact directory ──
-    artefact_dir = st.sidebar.text_input(
-        "Artefacts directory",
-        value=".",
-        help="Folder containing cv_best_fold_model.pkl, calibrator.pkl, cv_predictions_oof.csv"
+    st.set_page_config(
+        page_title="XAUUSD Signal",
+        page_icon="🥇",
+        layout="centered",
+        initial_sidebar_state="collapsed"   # better on mobile
     )
 
-    if st.sidebar.button("Run Inference", type="primary", use_container_width=True):
+    st.title("🥇 XAUUSD Daily Signal")
+    st.caption(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+    if st.button("▶  Run Inference", type="primary", use_container_width=True):
         try:
-            with st.spinner("Fetching market data..."):
+            with st.spinner("Fetching market & macro data..."):
                 end   = datetime.now()
                 start = end - timedelta(days=DAYS_BACK)
                 df    = fetch_data(start, end)
 
-            st.sidebar.success(f"Data: {len(df)} rows  ({df.index[0].date()} → {df.index[-1].date()})")
-
             with st.spinner("Engineering features..."):
                 features = engineer_features(df)
 
-            st.sidebar.info(f"Feature rows: {len(features)}")
-
-            with st.spinner("Loading artefacts..."):
-                base_model, calibrator, oof_history = load_artefacts(artefact_dir)
-
-            st.sidebar.info(f"OOF history: {len(oof_history)} rows")
+            with st.spinner("Loading models..."):
+                base_model, calibrator, oof_history = load_artefacts()
 
             with st.spinner("Running inference..."):
                 result = run_inference(features, base_model, calibrator, oof_history)
 
-            # ── Signal banner ──
             signal = result["signal"]
+
+            # ── Signal banner ──
             if signal == "BUY":
-                st.success(f"## ✅ SIGNAL: BUY", icon="📈")
+                st.success("## ✅  BUY", icon="📈")
             elif signal == "SELL":
-                st.error(f"## 🔻 SIGNAL: SELL", icon="📉")
+                st.error("## 🔻  SELL", icon="📉")
             else:
-                st.warning(f"## ⏸ NO SIGNAL", icon="🔇")
-                reasons = []
+                st.warning("## ⏸  NO SIGNAL")
                 if result["abs_pred_z"] < CONVICTION_THRESHOLD:
-                    reasons.append(f"|pred_z| = {result['abs_pred_z']:.2f} (threshold: {CONVICTION_THRESHOLD})")
+                    st.caption(f"↳ |pred_z| = {result['abs_pred_z']:.2f}  (need ≥ {CONVICTION_THRESHOLD})")
                 if result["prob_success"] < PROB_THRESHOLD:
-                    reasons.append(f"prob = {result['prob_success']:.4f} (threshold: {PROB_THRESHOLD})")
-                for r in reasons:
-                    st.caption(f"↳ {r}")
+                    st.caption(f"↳ prob = {result['prob_success']:.4f}  (need ≥ {PROB_THRESHOLD})")
 
             st.divider()
 
-            # ── Key metrics row ──
+            # ── Key metrics (2×2 for mobile) ──
             label = "Bull 🐂" if result["market_state"] == 1 else "Bear 🐻" if result["market_state"] == -1 else "Neutral ➡️"
-            c1, c2, c3, c4 = st.columns(4)
+            c1, c2 = st.columns(2)
             c1.metric("XAUUSD Close",  f"${result['Close_XAUUSD']:,.2f}")
             c2.metric("Market State",  label)
+            c3, c4 = st.columns(2)
             c3.metric("Prob Success",  f"{result['prob_success']:.1%}")
             c4.metric("Pred Z-Score",  f"{result['pred_z']:+.4f}")
 
             st.divider()
 
             # ── Full detail table ──
-            st.subheader("Full Output")
-            detail = {
+            st.subheader("Detail")
+            st.table(pd.DataFrame({
                 "Field": [
-                    "Date", "XAUUSD Close", "Macro Fast",
-                    "Market State", "Base Prediction",
-                    "Pred Z-Score", "Abs Pred Z", "Prob Success", "Signal"
+                    "Date", "XAUUSD Close", "Macro Fast", "Market State",
+                    "Base Prediction", "Pred Z-Score", "Abs Pred Z",
+                    "Prob Success", "Signal"
                 ],
                 "Value": [
                     result["date"],
@@ -235,16 +226,14 @@ def main():
                     f"{result['prob_success']:.4f}",
                     signal,
                 ]
-            }
-            st.table(pd.DataFrame(detail))
+            }))
 
         except FileNotFoundError as e:
-            st.error(f"Artefact not found: {e}\n\nCheck the directory path in the sidebar.")
+            st.error(f"Missing artefact: {e}")
         except Exception as e:
             st.exception(e)
-
     else:
-        st.info("Set the artefacts directory in the sidebar, then click **Run Inference**.")
+        st.info("Tap **Run Inference** to generate today's signal.")
 
 
 if __name__ == "__main__":

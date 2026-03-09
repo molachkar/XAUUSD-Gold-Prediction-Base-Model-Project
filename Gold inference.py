@@ -12,7 +12,7 @@ warnings.filterwarnings("ignore")
 
 DAYS_BACK            = 500
 PROB_THRESHOLD       = 0.44
-CONVICTION_THRESHOLD = 0.8
+CONVICTION_THRESHOLD = 0.5
 PRED_Z_LOOKBACK      = 252
 FRED_API_KEY         = "219d0c44b2e3b4a8b690c3f69b91a5bb"
 MACRO_SERIES         = ['DFII10', 'DFII5', 'DGS2', 'FEDFUNDS']

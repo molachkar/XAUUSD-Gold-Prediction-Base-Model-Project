@@ -53,6 +53,49 @@ def fetch_single(ticker, start, end, retries=3, chunk_years=5):
     return result
 
 
+def fetch_fred(start, end):
+    """
+    Try FRED API first. If network fails, fall back to local CSV files.
+    Download CSVs manually from:
+      https://fred.stlouisfed.org/graph/fredgraph.csv?id=DFII10
+      https://fred.stlouisfed.org/graph/fredgraph.csv?id=DFII5
+      https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS2
+      https://fred.stlouisfed.org/graph/fredgraph.csv?id=FEDFUNDS
+    Save them in the same folder as this script.
+    """
+    import time
+    series = {}
+    for s in MACRO_SERIES:
+        # try API first
+        try:
+            fred = Fred(api_key=FRED_API_KEY)
+            data = fred.get_series(s, start, end)
+            series[s] = data
+            print(f"  {s} fetched from API ({len(data)} rows)")
+            continue
+        except Exception:
+            pass
+        # fall back to local CSV
+        local = os.path.join(OUTPUT_DIR, f"{s}.csv")
+        if os.path.exists(local):
+            df = pd.read_csv(local, index_col=0, parse_dates=True)
+            df.index = pd.to_datetime(df.index).tz_localize(None)
+            col = df.columns[0]
+            data = df[col].replace(".", np.nan).astype(float)
+            data = data[(data.index >= start) & (data.index <= end)]
+            series[s] = data
+            print(f"  {s} loaded from local CSV ({len(data)} rows)")
+        else:
+            raise FileNotFoundError(
+                f"FRED API unreachable and no local file found for {s}. "
+                f"Download from: https://fred.stlouisfed.org/graph/fredgraph.csv?id={s} "
+                f"and save as {local}"
+            )
+    macro = pd.DataFrame(series)
+    macro.index = pd.to_datetime(macro.index).tz_localize(None)
+    return macro
+
+
 def fetch_all(start, end):
     print("fetching gold ...")
     gold = fetch_single("GC=F", start, end)
@@ -66,11 +109,7 @@ def fetch_all(start, end):
     jpy = fetch_single("JPY=X", start, end)
 
     print("fetching fred macro ...")
-    fred  = Fred(api_key=FRED_API_KEY)
-    macro = pd.DataFrame(
-        {s: fred.get_series(s, start, end) for s in MACRO_SERIES}
-    )
-    macro.index = pd.to_datetime(macro.index).tz_localize(None)
+    macro = fetch_fred(start, end)
 
     # build on gold trading day index
     prices = pd.DataFrame({
@@ -146,14 +185,12 @@ def engineer(df):
     ath = gold.expanding().max()
     out["Pct_From_AllTimeHigh"] = (ath - gold) / ath
 
-    # market state  {-1, 0, 1}
+    # bull_trend: continuous pct gap between ema50 and ema200
+    # positive = bull, negative = bear, near-zero = consolidation
+    # replaces binary Market_State which went dead in high-vol bull regimes
     ema50   = gold.ewm(span=50,  adjust=False).mean()
     ema200  = gold.ewm(span=200, adjust=False).mean()
-    mkt_vol = out["Close_Returns"].shift(1).rolling(20).std()
-    vol_med = mkt_vol.expanding().median()
-    out["Market_State"] = 0
-    out.loc[(ema50 > ema200) & (mkt_vol < vol_med), "Market_State"] = 1
-    out.loc[(ema50 < ema200) & (mkt_vol > vol_med), "Market_State"] = -1
+    out["Bull_Trend"] = (ema50 - ema200) / ema200
 
     # macro_fast: 8-component causal z-score
     z_cols = []
@@ -166,7 +203,8 @@ def engineer(df):
     out["Macro_Fast"] = (out[z_cols].mean(axis=1)
                           .replace([np.inf, -np.inf], np.nan)
                           .ffill()
-                          .bfill())
+                          .bfill()
+                          .clip(-5, 5))
     out.drop(columns=z_cols, inplace=True)
 
     return out

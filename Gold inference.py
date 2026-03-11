@@ -460,7 +460,7 @@ def fetch_news():
                     img = ""
             if age_s:
                 dt  = datetime.fromtimestamp(age_s)
-                hrs = (datetime.now() - dt).seconds // 3600
+                hrs = (datetime.now() - dt).seconds // 86400
                 age = f"{hrs}h ago" if hrs < 24 else dt.strftime("%b %d")
             else:
                 age = ""

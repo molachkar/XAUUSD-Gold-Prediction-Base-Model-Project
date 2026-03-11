@@ -254,6 +254,25 @@ def main():
 
     print(f"saved dataset_train_val.csv  ({len(train_val)} rows)")
     print(f"saved dataset_test.csv  ({len(test)} rows)")
+
+    # hard verification — crashes immediately if any required feature is missing
+    # or contains NaN/inf in either output file, so downstream training never
+    # runs on broken data again
+    REQUIRED = {"Bull_Trend", "Macro_Fast", "BB_PctB", "Price_Over_EMA50",
+                "Price_Over_EMA200", "MACD_Signal_Norm", "target_log_return"}
+    for name, out_df in [("train_val", train_val), ("test", test)]:
+        missing = REQUIRED - set(out_df.columns)
+        if missing:
+            raise RuntimeError(f"VERIFICATION FAILED: {name} missing columns: {missing}")
+        nan_count = out_df[list(REQUIRED)].isnull().sum().sum()
+        inf_count = np.isinf(out_df.select_dtypes(include=np.number)).sum().sum()
+        if nan_count > 0:
+            bad = out_df[list(REQUIRED)].isnull().sum()
+            raise RuntimeError(f"VERIFICATION FAILED: {name} has {nan_count} NaN values:\n{bad[bad>0]}")
+        if inf_count > 0:
+            raise RuntimeError(f"VERIFICATION FAILED: {name} has {inf_count} inf values")
+        print(f"verified {name}: all required features present, zero NaN, zero inf")
+
     print("done")
 
 

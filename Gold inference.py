@@ -20,7 +20,7 @@ warnings.filterwarnings("ignore")
 
 # ── constants ─────────────────────────────────────────────────────────────────
 DAYS_BACK        = 520          # fetch window — enough for all rolling windows
-PROB_THRESHOLD   = 0.51       # calibrated from OOF signal quality table
+PROB_THRESHOLD   = 0.45       # calibrated from OOF signal quality table
 Z_THRESHOLD      = 0.6     # minimum |pred_z| to emit a signal
 PRED_Z_LOOKBACK  = 252
 FRED_API_KEY     = "219d0c44b2e3b4a8b690c3f69b91a5bb"
